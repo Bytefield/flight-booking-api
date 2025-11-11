@@ -1,0 +1,222 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Flight Booking API - Serverless Application
+
+# ============================================
+# GLOBALS: Configuración compartida por todas las Lambdas
+# ============================================
+Globals:
+  Function:
+    # Versión de Python
+    Runtime: python3.11
+    # Máximo 30 segundos por request
+    Timeout: 30
+    # 256 MB de RAM
+    MemorySize: 256
+    Environment:
+      Variables:
+        # Referencia a tabla Users
+        USERS_TABLE: !Ref UsersTable
+        # Referencia a tabla Flights
+        FLIGHTS_TABLE: !Ref FlightsTable
+        # Referencia a tabla Bookings
+        BOOKINGS_TABLE: !Ref BookingsTable
+        # Secreto para JWT (cambiar después)
+        JWT_SECRET: "change-this-secret"
+        AWS_REGION: eu-north-1
+  Api:
+    # Habilitar CORS para frontend
+    Cors:
+      AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+      AllowHeaders: "'Content-Type,Authorization'"
+      AllowOrigin: "'*'"
+
+# ============================================
+# RESOURCES: Aquí defines Lambda, API, DynamoDB
+# ============================================
+Resources:
+  # API GATEWAY REST API
+  FlightBookingApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: flight-booking-api
+      StageName: dev
+
+  # LAMBDA 1: Autenticación (login, register)
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: flight-booking-auth
+      # Carpeta con el código
+      CodeUri: src/auth/
+      # Función a ejecutar
+      Handler: handler.lambda_handler
+      Policies:
+        # Permiso para DynamoDB
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+      Events:
+        Register:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FlightBookingApi
+            Path: /auth/register
+            Method: post
+        Login:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FlightBookingApi
+            Path: /auth/login
+            Method: post
+
+  # LAMBDA 2: Vuelos (listar, buscar)
+  FlightsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: flight-booking-flights
+      CodeUri: src/flights/
+      Handler: handler.lambda_handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FlightsTable
+      Events:
+        ListFlights:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FlightBookingApi
+            Path: /flights
+            Method: get
+        GetFlight:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FlightBookingApi
+            Path: /flights/{flight_id}
+            Method: get
+
+  # LAMBDA 3: Reservas (crear, listar, cancelar)
+  BookingsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: flight-booking-bookings
+      CodeUri: src/bookings/
+      Handler: handler.lambda_handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BookingsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FlightsTable
+      Events:
+        CreateBooking:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FlightBookingApi
+            Path: /bookings
+            Method: post
+        ListBookings:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FlightBookingApi
+            Path: /bookings
+            Method: get
+        CancelBooking:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FlightBookingApi
+            Path: /bookings/{booking_id}
+            Method: delete
+
+  # LAMBDA 4: Usuarios (perfil)
+  UsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: flight-booking-users
+      CodeUri: src/users/
+      Handler: handler.lambda_handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+      Events:
+        GetProfile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FlightBookingApi
+            Path: /users/me
+            Method: get
+
+  # TABLA DYNAMODB: Users
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: flight-booking-users
+      # Free Tier friendly
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+      # Para buscar por email
+      GlobalSecondaryIndexes:
+        - IndexName: email-index
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # TABLA DYNAMODB: Flights
+  FlightsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: flight-booking-flights
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: flight_id
+          AttributeType: S
+        - AttributeName: origin
+          AttributeType: S
+      KeySchema:
+        - AttributeName: flight_id
+          KeyType: HASH
+      # Para buscar por origen
+      GlobalSecondaryIndexes:
+        - IndexName: origin-index
+          KeySchema:
+            - AttributeName: origin
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # TABLA DYNAMODB: Bookings
+  BookingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: flight-booking-bookings
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: booking_id
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: booking_id
+          KeyType: HASH
+      # Para buscar por usuario
+      GlobalSecondaryIndexes:
+        - IndexName: user-index
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+# ============================================
+# OUTPUTS: Info que se muestra al finalizar deploy
+# ============================================
+Outputs:
+  ApiEndpoint:
+    Description: "URL del API Gateway"
+    Value: !Sub "https://${FlightBookingApi}.execute-api.${AWS::Region}.amazonaws.com/dev/"
