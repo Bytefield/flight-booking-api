@@ -23,7 +23,6 @@ Globals:
         BOOKINGS_TABLE: !Ref BookingsTable
         # Secreto para JWT (cambiar después)
         JWT_SECRET: "change-this-secret"
-        AWS_REGION: eu-north-1
   Api:
     # Habilitar CORS para frontend
     Cors:
@@ -35,13 +34,6 @@ Globals:
 # RESOURCES: Aquí defines Lambda, API, DynamoDB
 # ============================================
 Resources:
-  # API GATEWAY REST API
-  FlightBookingApi:
-    Type: AWS::Serverless::Api
-    Properties:
-      Name: flight-booking-api
-      StageName: dev
-
   # LAMBDA 1: Autenticación (login, register)
   AuthFunction:
     Type: AWS::Serverless::Function
@@ -59,13 +51,11 @@ Resources:
         Register:
           Type: Api
           Properties:
-            RestApiId: !Ref FlightBookingApi
             Path: /auth/register
             Method: post
         Login:
           Type: Api
           Properties:
-            RestApiId: !Ref FlightBookingApi
             Path: /auth/login
             Method: post
 
@@ -83,13 +73,11 @@ Resources:
         ListFlights:
           Type: Api
           Properties:
-            RestApiId: !Ref FlightBookingApi
             Path: /flights
             Method: get
         GetFlight:
           Type: Api
           Properties:
-            RestApiId: !Ref FlightBookingApi
             Path: /flights/{flight_id}
             Method: get
 
@@ -109,19 +97,16 @@ Resources:
         CreateBooking:
           Type: Api
           Properties:
-            RestApiId: !Ref FlightBookingApi
             Path: /bookings
             Method: post
         ListBookings:
           Type: Api
           Properties:
-            RestApiId: !Ref FlightBookingApi
             Path: /bookings
             Method: get
         CancelBooking:
           Type: Api
           Properties:
-            RestApiId: !Ref FlightBookingApi
             Path: /bookings/{booking_id}
             Method: delete
 
@@ -139,7 +124,6 @@ Resources:
         GetProfile:
           Type: Api
           Properties:
-            RestApiId: !Ref FlightBookingApi
             Path: /users/me
             Method: get
 
@@ -219,4 +203,4 @@ Resources:
 Outputs:
   ApiEndpoint:
     Description: "URL del API Gateway"
-    Value: !Sub "https://${FlightBookingApi}.execute-api.${AWS::Region}.amazonaws.com/dev/"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/prod/"
